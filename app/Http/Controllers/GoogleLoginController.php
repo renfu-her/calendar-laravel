@@ -84,8 +84,7 @@ class GoogleLoginController extends Controller
                 ['email' => $userInfo['email']],
                 [
                     'name' => $userInfo['name'],
-                    'google_id' => $userInfo['id'],
-                    'password' => bcrypt(Str::random(16)), // Create a random password as we are using Google login
+                    'google_id' => $userInfo['id'], // Create a random password as we are using Google login
                     'google_token' => json_encode($tokenData), // Store the full token data, including refresh token if available
                 ]
             );

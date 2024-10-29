@@ -58,6 +58,22 @@
         #monthPicker {
             min-width: 200px;
         }
+
+        /* Google Calendar 事件樣式 */
+        .gcal-event {
+            background-color: #4285f4;
+            border-color: #4285f4;
+        }
+
+        .gcal-event-secondary {
+            background-color: #34a853;
+            border-color: #34a853;
+        }
+
+        .gcal-event-tertiary {
+            background-color: #fbbc05;
+            border-color: #fbbc05;
+        }
     </style>
 @endpush
 
@@ -115,7 +131,25 @@
                 },
                 eventResize: function(info) {
                     updateEvent(info.event);
-                }
+                },
+                googleCalendarApiKey: '{{ config('services.google.calendar_api_key') }}',
+                eventSources: [
+                    // 本地事件來源
+                    '{{ route('get.events') }}',
+                    // Google Calendar 事件來源
+                    {
+                        googleCalendarId: 'renfu.her@gmail.com',
+                        className: 'gcal-event'
+                    },
+                    {
+                        googleCalendarId: 'jenfuhe@besttour.com.tw',
+                        className: 'gcal-event-secondary'
+                    },
+                    {
+                        googleCalendarId: 'zivhsiao@gmail.com',
+                        className: 'gcal-event-tertiary'
+                    }
+                ]
             });
 
             calendar.render();
