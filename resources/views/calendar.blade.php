@@ -74,6 +74,37 @@
             background-color: #fbbc05;
             border-color: #fbbc05;
         }
+
+        .gcal-event-primary {
+            background-color: #1a73e8 !important;
+            border-color: #1a73e8 !important;
+            color: #ffffff !important;
+        }
+
+        .gcal-event-secondary {
+            background-color: #137333 !important;
+            border-color: #137333 !important;
+            color: #ffffff !important;
+        }
+
+        .gcal-event-tertiary {
+            background-color: #ea8600 !important;
+            border-color: #ea8600 !important;
+            color: #ffffff !important;
+        }
+
+        /* 懸停效果 */
+        .gcal-event-primary:hover,
+        .gcal-event-secondary:hover,
+        .gcal-event-tertiary:hover {
+            opacity: 0.9;
+        }
+
+        /* 確保文字清晰可見 */
+        .fc-event-title {
+            font-weight: 500 !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
     </style>
 @endpush
 
@@ -107,43 +138,29 @@
                 timeZone: 'local',
                 locale: 'zh-tw',
                 firstDay: 1,
-                events: '{{ route('get.events') }}',
-                editable: true,
-                selectable: true,
-                displayEventTime: true,
-                eventTimeFormat: {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                    meridiem: false
-                },
-                select: function(info) {
-                    currentEvent = null;
-                    $('#eventTitle').val('');
-                    $('#eventStart').val(formatDateTime(info.start));
-                    $('#eventEnd').val(formatDateTime(info.end));
-                    $('#deleteEvent').hide();
-                    eventModal.show();
-                },
-                eventClick: function(info) {
-                    currentEvent = info.event;
-                    $('#eventTitle').val(currentEvent.title);
-                    
-                    // 使用事件的本地時間
-                    const start = currentEvent.start;
-                    const end = currentEvent.end || start;
-                    
-                    $('#eventStart').val(formatDateTime(start));
-                    $('#eventEnd').val(formatDateTime(end));
-                    $('#deleteEvent').show();
-                    eventModal.show();
-                },
-                eventDrop: function(info) {
-                    updateEvent(info.event);
-                },
-                eventResize: function(info) {
-                    updateEvent(info.event);
-                }
+                eventSources: [
+                    // 主用戶的日曆
+                    {
+                        googleCalendarId: 'renfu.her@gmail.com',
+                        className: 'gcal-event-primary',
+                        // 可以設置不同顏色
+                        color: '#4285f4'
+                    },
+                    // 公用行事曆 1
+                    {
+                        googleCalendarId: 'zivhsiao@gmail.com',
+                        className: 'gcal-event-secondary',
+                        color: '#34a853'
+                    },
+                    // 公用行事曆 2
+                    {
+                        googleCalendarId: 'jenfuhe@besttour.com.tw',
+                        className: 'gcal-event-tertiary',
+                        color: '#fbbc05'
+                    }
+                ],
+                // 需要設置 Google Calendar API Key
+                googleCalendarApiKey: '{{ config('services.google.calendar_api_key') }}'
             });
 
             calendar.render();
@@ -171,7 +188,8 @@
                 if (currentEvent) {
                     // 更新現有事件
                     $.ajax({
-                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId', currentEvent.id),
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            currentEvent.id),
                         method: 'PUT',
                         headers: {
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
@@ -215,7 +233,8 @@
             $('#deleteEvent').on('click', function() {
                 if (currentEvent && confirm('確定要刪除這個事件嗎？')) {
                     $.ajax({
-                        url: '{{ route('events.delete', ':eventId') }}'.replace(':eventId', currentEvent.id),
+                        url: '{{ route('events.delete', ':eventId') }}'.replace(':eventId',
+                            currentEvent.id),
                         method: 'DELETE',
                         headers: {
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
@@ -232,14 +251,14 @@
             function formatDateTime(date) {
                 // 確保輸入是 Date 對象
                 const d = date instanceof Date ? date : new Date(date);
-                
+
                 // 獲取本地時間的年月日時分
                 const year = d.getFullYear();
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 const hours = String(d.getHours()).padStart(2, '0');
                 const minutes = String(d.getMinutes()).padStart(2, '0');
-                
+
                 // 直接返回本地時間格式
                 return `${year}-${month}-${day}T${hours}:${minutes}`;
             }
@@ -248,7 +267,7 @@
             function updateEvent(event) {
                 const startDate = new Date(event.start);
                 const endDate = event.end ? new Date(event.end) : startDate;
-                
+
                 $.ajax({
                     url: '{{ route('events.update', ':eventId') }}'.replace(':eventId', event.id),
                     method: 'PUT',

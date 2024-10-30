@@ -16,6 +16,26 @@ use Illuminate\Support\Facades\Log;
 class GoogleCalendarController extends Controller
 {
     private $client;
+    private $calendars = [
+        [
+            'id' => 'renfu.her@gmail.com',
+            'className' => 'gcal-event-primary',
+            'color' => '#1a73e8',
+            'textColor' => '#ffffff'
+        ],
+        [
+            'id' => 'zivhsiao@gmail.com',
+            'className' => 'gcal-event-secondary',
+            'color' => '#137333',
+            'textColor' => '#ffffff'
+        ],
+        [
+            'id' => 'jenfuhe@besttour.com.tw',
+            'className' => 'gcal-event-tertiary',
+            'color' => '#ea8600',
+            'textColor' => '#ffffff'
+        ]
+    ];
 
     public function __construct()
     {
@@ -98,9 +118,8 @@ class GoogleCalendarController extends Controller
             }
 
             $this->setupClient($user);
-
             $service = new GoogleCalendar($this->client);
-            $calendarId = 'primary';
+            $events = [];
 
             // 從 FullCalendar 傳來的請求中提取 start 和 end 參數
             $start = Carbon::parse($request->query('start'))->setTimezone('Asia/Taipei');
@@ -115,20 +134,30 @@ class GoogleCalendarController extends Controller
                 'timeZone' => 'Asia/Taipei',
             ];
 
-            $results = $service->events->listEvents($calendarId, $optParams);
-            $events = [];
+            // 獲取所有日曆的事件
+            foreach ($this->calendars as $calendar) {
+                try {
+                    $results = $service->events->listEvents($calendar['id'], $optParams);
+                    
+                    foreach ($results->getItems() as $event) {
+                        $eventStart = $event->start->dateTime ?? $event->start->date;
+                        $eventEnd = $event->end->dateTime ?? $event->end->date;
 
-            foreach ($results->getItems() as $event) {
-                $eventStart = $event->start->dateTime ?? $event->start->date;
-                $eventEnd = $event->end->dateTime ?? $event->end->date;
-
-                $events[] = [
-                    'id' => $event->id,
-                    'title' => $event->getSummary(),
-                    'start' => Carbon::parse($eventStart)->setTimezone('Asia/Taipei')->format('c'),
-                    'end' => Carbon::parse($eventEnd)->setTimezone('Asia/Taipei')->format('c'),
-                    'allDay' => !isset($event->start->dateTime),
-                ];
+                        $events[] = [
+                            'id' => $event->id,
+                            'title' => $event->getSummary(),
+                            'start' => Carbon::parse($eventStart)->setTimezone('Asia/Taipei')->format('c'),
+                            'end' => Carbon::parse($eventEnd)->setTimezone('Asia/Taipei')->format('c'),
+                            'allDay' => !isset($event->start->dateTime),
+                            'className' => $calendar['className'],
+                            'color' => $calendar['color'],
+                            'calendarId' => $calendar['id']  // 保存來源日曆ID
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Error fetching events from calendar {$calendar['id']}: " . $e->getMessage());
+                    continue;  // 如果某個日曆獲取失敗，繼續獲取其他日曆
+                }
             }
 
             return response()->json($events);
@@ -196,7 +225,7 @@ class GoogleCalendarController extends Controller
             $this->setupClient($user);
 
             $service = new GoogleCalendar($this->client);
-            $calendarId = 'primary';
+            $calendarId = $request->input('calendarId', 'primary');  // 從請求中獲取日曆ID
 
             // 獲取現有事件
             $event = $service->events->get($calendarId, $eventId);
@@ -226,6 +255,7 @@ class GoogleCalendarController extends Controller
                 'title' => $updatedEvent->summary,
                 'start' => Carbon::parse($updatedEvent->start->dateTime)->setTimezone('Asia/Taipei')->format('c'),
                 'end' => Carbon::parse($updatedEvent->end->dateTime)->setTimezone('Asia/Taipei')->format('c'),
+                'calendarId' => $calendarId
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to update event: ' . $e->getMessage()], 500);
@@ -233,14 +263,14 @@ class GoogleCalendarController extends Controller
     }
 
     // 刪除日曆事件
-    public function deleteEvent($eventId)
+    public function deleteEvent(Request $request, $eventId)
     {
         try {
             $user = Auth::user();
             $this->setupClient($user);
 
             $service = new GoogleCalendar($this->client);
-            $calendarId = 'primary';
+            $calendarId = $request->input('calendarId', 'primary');  // 從請求中獲取日曆ID
 
             $service->events->delete($calendarId, $eventId);
 
