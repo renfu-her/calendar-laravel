@@ -105,12 +105,19 @@
                     center: 'title',
                     right: 'dayGridMonth,timeGridWeek,timeGridDay'
                 },
-                timeZone: 'Asia/Taipei',
+                timeZone: 'local',
                 locale: 'zh-tw',
                 firstDay: 1,
                 events: '{{ route('get.events') }}',
                 editable: true,
                 selectable: true,
+                displayEventTime: true,
+                eventTimeFormat: {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    meridiem: false
+                },
                 select: function(info) {
                     currentEvent = null;
                     $('#eventTitle').val('');
@@ -122,8 +129,13 @@
                 eventClick: function(info) {
                     currentEvent = info.event;
                     $('#eventTitle').val(currentEvent.title);
-                    $('#eventStart').val(formatDateTime(currentEvent.start));
-                    $('#eventEnd').val(formatDateTime(currentEvent.end));
+                    
+                    // 使用事件的本地時間
+                    const start = currentEvent.start;
+                    const end = currentEvent.end || start;
+                    
+                    $('#eventStart').val(formatDateTime(start));
+                    $('#eventEnd').val(formatDateTime(end));
                     $('#deleteEvent').show();
                     eventModal.show();
                 },
@@ -219,15 +231,25 @@
 
             // 輔助函數：格式化日期時間
             function formatDateTime(date) {
-                const d = new Date(date);
-                const taipeiTime = new Date(d.toLocaleString('en-US', {
-                    timeZone: 'Asia/Taipei'
-                }));
-                return taipeiTime.toISOString().slice(0, 16);
+                // 確保輸入是 Date 對象
+                const d = date instanceof Date ? date : new Date(date);
+                
+                // 獲取本地時間的年月日時分
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                
+                // 直接返回本地時間格式
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
             }
 
             // 輔助函數：更新事件
             function updateEvent(event) {
+                const startDate = new Date(event.start);
+                const endDate = event.end ? new Date(event.end) : startDate;
+                
                 $.ajax({
                     url: '{{ route('events.update', ':eventId') }}'.replace(':eventId', event.id),
                     method: 'PUT',
@@ -235,8 +257,8 @@
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     data: JSON.stringify({
-                        start: event.start.toISOString(),
-                        end: event.end ? event.end.toISOString() : event.start.toISOString()
+                        start: formatDateTime(startDate),
+                        end: formatDateTime(endDate)
                     }),
                     contentType: 'application/json',
                     success: function(data) {
