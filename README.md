@@ -6,7 +6,7 @@
 - Bootstrap
 - FontAwesome
 
-##　如何使用
+## 如何使用
 
 ### 安裝
 ```
