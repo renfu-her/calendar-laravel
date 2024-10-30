@@ -31,6 +31,10 @@
                             <input type="text" class="form-control" id="eventTitle" required>
                         </div>
                         <div class="mb-3">
+                            <label class="form-label">描述</label>
+                            <textarea class="form-control" id="eventDescription" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
                             <label class="form-label">開始時間</label>
                             <input type="datetime-local" class="form-control" id="eventStart" required>
                         </div>
@@ -105,6 +109,13 @@
             font-weight: 500 !important;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
         }
+
+        #eventDescription {
+            white-space: pre-wrap;
+            min-height: 80px;
+            font-family: inherit;
+            line-height: 1.5;
+        }
     </style>
 @endpush
 
@@ -138,29 +149,112 @@
                 timeZone: 'local',
                 locale: 'zh-tw',
                 firstDay: 1,
-                eventSources: [
-                    // 主用戶的日曆
-                    {
+                eventSources: [{
                         googleCalendarId: 'renfu.her@gmail.com',
                         className: 'gcal-event-primary',
-                        // 可以設置不同顏色
-                        color: '#4285f4'
+                        color: '#4285f4',
+                        id: 'gc:renfu.her@gmail.com',
+                        eventDataTransform: function(event) {
+                            event.extendedProps = event.extendedProps || {};
+                            event.extendedProps.calendarId = 'renfu.her@gmail.com';
+                            return event;
+                        }
                     },
-                    // 公用行事曆 1
                     {
                         googleCalendarId: 'zivhsiao@gmail.com',
                         className: 'gcal-event-secondary',
-                        color: '#34a853'
+                        color: '#34a853',
+                        id: 'gc:zivhsiao@gmail.com',
+                        eventDataTransform: function(event) {
+                            event.extendedProps = event.extendedProps || {};
+                            event.extendedProps.calendarId = 'zivhsiao@gmail.com';
+                            return event;
+                        }
                     },
-                    // 公用行事曆 2
                     {
                         googleCalendarId: 'jenfuhe@besttour.com.tw',
                         className: 'gcal-event-tertiary',
-                        color: '#fbbc05'
+                        color: '#fbbc05',
+                        id: 'gc:jenfuhe@besttour.com.tw',
+                        eventDataTransform: function(event) {
+                            event.extendedProps = event.extendedProps || {};
+                            event.extendedProps.calendarId = 'jenfuhe@besttour.com.tw';
+                            return event;
+                        }
                     }
                 ],
                 // 需要設置 Google Calendar API Key
-                googleCalendarApiKey: '{{ config('services.google.calendar_api_key') }}'
+                googleCalendarApiKey: '{{ config('services.google.calendar_api_key') }}',
+                editable: true, // 啟用拖放編輯
+                eventDraggable: true, // 允許事件拖動
+                eventResizeable: true, // 允許調整事件長度
+
+                // 事件拖放後的處理
+                eventDrop: function(info) {
+                    const event = info.event;
+                    const startDate = new Date(event.start);
+                    const endDate = event.end ? new Date(event.end) : startDate;
+
+                    $.ajax({
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            event.id),
+                        method: 'PUT',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        data: JSON.stringify({
+                            start: formatDateTime(startDate),
+                            end: formatDateTime(endDate),
+                            calendarId: event.extendedProps.calendarId
+                        }),
+                        contentType: 'application/json',
+                        error: function(xhr) {
+                            info.revert(); // 發生錯誤時恢復原位置
+                            alert('更新失敗：' + (xhr.responseJSON?.error || '未知錯誤'));
+                        }
+                    });
+                },
+
+                // 調整事件時長
+                eventResize: function(info) {
+                    const event = info.event;
+                    const startDate = new Date(event.start);
+                    const endDate = new Date(event.end);
+
+                    $.ajax({
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            event.id),
+                        method: 'PUT',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        data: JSON.stringify({
+                            start: formatDateTime(startDate),
+                            end: formatDateTime(endDate),
+                            calendarId: event.extendedProps.calendarId
+                        }),
+                        contentType: 'application/json',
+                        error: function(xhr) {
+                            info.revert(); // 發生錯誤時恢復原大小
+                            alert('更新失敗：' + (xhr.responseJSON?.error || '未知錯誤'));
+                        }
+                    });
+                },
+
+                // 事件渲染時的處理（只處理顏色）
+                eventDidMount: function(info) {
+                    // 設置事件顏色
+                    if (info.event.classNames.includes('gcal-event-primary')) {
+                        info.el.style.backgroundColor = '#1a73e8';
+                        info.el.style.borderColor = '#1a73e8';
+                    } else if (info.event.classNames.includes('gcal-event-secondary')) {
+                        info.el.style.backgroundColor = '#137333';
+                        info.el.style.borderColor = '#137333';
+                    } else if (info.event.classNames.includes('gcal-event-tertiary')) {
+                        info.el.style.backgroundColor = '#ea8600';
+                        info.el.style.borderColor = '#ea8600';
+                    }
+                }
             });
 
             calendar.render();
@@ -181,12 +275,31 @@
 
             // 儲存事件
             $('#saveEvent').on('click', function() {
-                var title = $('#eventTitle').val();
-                var start = $('#eventStart').val();
-                var end = $('#eventEnd').val();
+                const title = $('#eventTitle').val();
+                let description = $('#eventDescription').val();
+                description = convertNewlineToBr(description);
+                const start = $('#eventStart').val();
+                const end = $('#eventEnd').val();
 
                 if (currentEvent) {
-                    // 更新現有事件
+                    // 獲取 calendarId
+                    const calendarId = currentEvent.extendedProps.calendarId;
+
+                    // 調試日誌
+                    console.log('Updating event with data:', {
+                        eventId: currentEvent.id,
+                        calendarId: calendarId,
+                        title: title,
+                        description: description,
+                        start: start,
+                        end: end
+                    });
+
+                    if (!calendarId) {
+                        alert('錯誤：找不到日曆ID');
+                        return;
+                    }
+
                     $.ajax({
                         url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
                             currentEvent.id),
@@ -196,34 +309,23 @@
                         },
                         data: JSON.stringify({
                             title: title,
+                            description: description,
                             start: start,
-                            end: end
+                            end: end,
+                            calendarId: calendarId
                         }),
                         contentType: 'application/json',
                         success: function(data) {
+                            console.log('Update success:', data);
                             currentEvent.setProp('title', data.title);
+                            currentEvent.setExtendedProp('description', data.description);
                             currentEvent.setStart(data.start);
                             currentEvent.setEnd(data.end);
                             eventModal.hide();
-                        }
-                    });
-                } else {
-                    // 創建新事件
-                    $.ajax({
-                        url: '{{ route('events.create') }}',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
-                        data: JSON.stringify({
-                            title: title,
-                            start: start,
-                            end: end
-                        }),
-                        contentType: 'application/json',
-                        success: function(data) {
-                            calendar.addEvent(data);
-                            eventModal.hide();
+                        error: function(xhr) {
+                            console.error('Update failed:', xhr.responseJSON);
+                            alert('更新失敗：' + (xhr.responseJSON?.error || '未知錯誤'));
                         }
                     });
                 }
@@ -283,6 +385,144 @@
                         // 如果需要，可以更新事件顯示
                     }
                 });
+            }
+
+            // 點擊空白日期
+            calendar.on('dateClick', function(info) {
+                currentEvent = null;
+                $('#eventTitle').val('');
+                $('#eventDescription').val('');
+                $('#eventStart').val(formatDateTime(info.date));
+                $('#eventEnd').val(formatDateTime(new Date(info.date.getTime() + 60 * 60 * 1000)));
+                $('#deleteEvent').hide();
+                $('.modal-title').text('新增事件');
+                eventModal.show();
+            });
+
+            // 點擊現有事件
+            calendar.on('eventClick', function(info) {
+                info.jsEvent.preventDefault();
+                currentEvent = info.event;
+
+                // 調試日誌
+                console.log('Current Event Data:', {
+                    id: currentEvent.id,
+                    title: currentEvent.title,
+                    extendedProps: currentEvent.extendedProps,
+                    source: currentEvent.source ? currentEvent.source.id : null
+                });
+
+                // 獲取 calendarId
+                const calendarId = currentEvent.source ?
+                    currentEvent.source.id.replace('gc:', '') : // 如果是從 Google Calendar 來的事件
+                    currentEvent.extendedProps.calendarId; // 如果是從我們的數據來的事件
+
+                // 保存 calendarId 到當前事件對象
+                currentEvent.setExtendedProp('calendarId', calendarId);
+
+                $('#eventTitle').val(currentEvent.title);
+                let description = currentEvent.extendedProps.description || '';
+                description = description.replace(/<br\s*\/?>/gi, '\n');
+                $('#eventDescription').val(description);
+                $('#eventStart').val(formatDateTime(currentEvent.start));
+                $('#eventEnd').val(formatDateTime(currentEvent.end || currentEvent.start));
+                $('#deleteEvent').show();
+                $('.modal-title').text('編輯事件');
+                eventModal.show();
+            });
+
+            // 拖放事件時
+            calendar.on('eventDrop', function(info) {
+                updateEvent(info.event);
+            });
+
+            // 調整事件時長時
+            calendar.on('eventResize', function(info) {
+                updateEvent(info.event);
+            });
+
+            // 保存事件時
+            $('#saveEvent').on('click', function() {
+                const title = $('#eventTitle').val();
+                let description = $('#eventDescription').val();
+                description = convertNewlineToBr(description);
+                const start = $('#eventStart').val();
+                const end = $('#eventEnd').val();
+
+                if (currentEvent) {
+                    // 獲取 calendarId
+                    const calendarId = currentEvent.extendedProps.calendarId;
+
+                    // 調試日誌
+                    console.log('Updating event with data:', {
+                        eventId: currentEvent.id,
+                        calendarId: calendarId,
+                        title: title,
+                        description: description,
+                        start: start,
+                        end: end
+                    });
+
+                    if (!calendarId) {
+                        alert('錯誤：找不到日曆ID');
+                        return;
+                    }
+
+                    $.ajax({
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            currentEvent.id),
+                        method: 'PUT',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        data: JSON.stringify({
+                            title: title,
+                            description: description,
+                            start: start,
+                            end: end,
+                            calendarId: calendarId
+                        }),
+                        contentType: 'application/json',
+                        success: function(data) {
+                            console.log('Update success:', data);
+                            currentEvent.setProp('title', data.title);
+                            currentEvent.setExtendedProp('description', data.description);
+                            currentEvent.setStart(data.start);
+                            currentEvent.setEnd(data.end);
+                            eventModal.hide();
+                        },
+                        error: function(xhr) {
+                            console.error('Update failed:', xhr.responseJSON);
+                            alert('更新失敗：' + (xhr.responseJSON?.error || '未知錯誤'));
+                        }
+                    });
+                }
+            });
+
+            // 可以添加一個輔助函數來處理事件懸停時顯示描述
+            calendar.on('eventMouseEnter', function(info) {
+                const description = info.event.extendedProps.description;
+                if (description) {
+                    $(info.el).tooltip({
+                        title: description.replace(/<br\s*\/?>/gi, '\n'),
+                        placement: 'top',
+                        trigger: 'hover',
+                        container: 'body',
+                        html: true
+                    });
+                }
+            });
+
+            // 輔助函數：將換行符轉換為 <br/>
+            function convertNewlineToBr(text) {
+                if (!text) return '';
+                return text.replace(/\n/g, '<br/>');
+            }
+
+            // 輔助函數：將 <br/> 轉換為換行符
+            function convertBrToNewline(text) {
+                if (!text) return '';
+                return text.replace(/<br\s*\/?>/gi, '\n');
             }
         });
     </script>

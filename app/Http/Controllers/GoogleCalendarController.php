@@ -138,20 +138,28 @@ class GoogleCalendarController extends Controller
             foreach ($this->calendars as $calendar) {
                 try {
                     $results = $service->events->listEvents($calendar['id'], $optParams);
-                    
+
                     foreach ($results->getItems() as $event) {
                         $eventStart = $event->start->dateTime ?? $event->start->date;
                         $eventEnd = $event->end->dateTime ?? $event->end->date;
 
+                        // 檢查事件是否可編輯
+                        $canEdit = $calendar['id'] === 'primary' ||
+                            $event->getCreator()->getEmail() === $user->email;
+
+                        $description = $event->getDescription();
                         $events[] = [
                             'id' => $event->id,
-                            'title' => $event->getSummary(),
+                            'title' => $event->getSummary() ?? '(無標題)',
+                            'description' => $this->convertBrToNewline($description),
                             'start' => Carbon::parse($eventStart)->setTimezone('Asia/Taipei')->format('c'),
                             'end' => Carbon::parse($eventEnd)->setTimezone('Asia/Taipei')->format('c'),
                             'allDay' => !isset($event->start->dateTime),
                             'className' => $calendar['className'],
                             'color' => $calendar['color'],
-                            'calendarId' => $calendar['id']  // 保存來源日曆ID
+                            'textColor' => $calendar['textColor'],
+                            'calendarId' => $calendar['id'],
+                            'editable' => $canEdit, // 添加編輯權限標記
                         ];
                     }
                 } catch (\Exception $e) {
@@ -185,35 +193,34 @@ class GoogleCalendarController extends Controller
         try {
             $user = Auth::user();
             $this->setupClient($user);
-
             $service = new GoogleCalendar($this->client);
 
-            // 創建 EventDateTime 對象
-            $startDateTime = new EventDateTime();
-            $startDateTime->setDateTime(Carbon::parse($request->start)->format('c'));
-            $startDateTime->setTimeZone('Asia/Taipei');
+            $event = new Event([
+                'summary' => $request->input('title'),
+                'description' => $this->convertNewlineToBr($request->input('description')),
+                'start' => [
+                    'dateTime' => Carbon::parse($request->start)->format('c'),
+                    'timeZone' => 'Asia/Taipei',
+                ],
+                'end' => [
+                    'dateTime' => Carbon::parse($request->end)->format('c'),
+                    'timeZone' => 'Asia/Taipei',
+                ],
+            ]);
 
-            $endDateTime = new EventDateTime();
-            $endDateTime->setDateTime(Carbon::parse($request->end)->format('c'));
-            $endDateTime->setTimeZone('Asia/Taipei');
-
-            // 創建事件
-            $event = new Event();
-            $event->setSummary($request->title);
-            $event->setStart($startDateTime);
-            $event->setEnd($endDateTime);
-
-            $calendarId = 'primary';
+            $calendarId = $request->input('calendarId', 'primary');
             $event = $service->events->insert($calendarId, $event);
 
             return response()->json([
                 'id' => $event->id,
                 'title' => $event->summary,
+                'description' => $this->convertBrToNewline($event->description),
                 'start' => Carbon::parse($event->start->dateTime)->setTimezone('Asia/Taipei')->format('c'),
                 'end' => Carbon::parse($event->end->dateTime)->setTimezone('Asia/Taipei')->format('c'),
+                'calendarId' => $calendarId
             ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to create event: ' . $e->getMessage()], 500);
+            return response()->json(['error' => '創建事件失敗：' . $e->getMessage()], 500);
         }
     }
 
@@ -223,15 +230,30 @@ class GoogleCalendarController extends Controller
         try {
             $user = Auth::user();
             $this->setupClient($user);
-
             $service = new GoogleCalendar($this->client);
-            $calendarId = $request->input('calendarId', 'primary');  // 從請求中獲取日曆ID
+
+            // 從請求中獲取日曆ID
+            $calendarId = $request->input('calendarId');
+            if (!$calendarId) {
+                throw new \Exception('缺少日曆ID');
+            }
+
+            Log::debug('Updating event', [
+                'calendarId' => $calendarId,
+                'eventId' => $eventId,
+                'request' => $request->all()
+            ]); // 調試用
 
             // 獲取現有事件
             $event = $service->events->get($calendarId, $eventId);
 
             if ($request->has('title')) {
-                $event->setSummary($request->title);
+                $event->setSummary($request->input('title'));
+            }
+
+            if ($request->has('description')) {
+                $description = $request->input('description');
+                $event->setDescription($description);
             }
 
             if ($request->has('start')) {
@@ -253,12 +275,19 @@ class GoogleCalendarController extends Controller
             return response()->json([
                 'id' => $updatedEvent->id,
                 'title' => $updatedEvent->summary,
+                'description' => $this->convertBrToNewline($updatedEvent->description),
                 'start' => Carbon::parse($updatedEvent->start->dateTime)->setTimezone('Asia/Taipei')->format('c'),
                 'end' => Carbon::parse($updatedEvent->end->dateTime)->setTimezone('Asia/Taipei')->format('c'),
                 'calendarId' => $calendarId
             ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to update event: ' . $e->getMessage()], 500);
+            Log::error('Event update failed', [
+                'error' => $e->getMessage(),
+                'calendarId' => $calendarId ?? null,
+                'eventId' => $eventId
+            ]); // 調試用
+
+            return response()->json(['error' => '更新事件失敗：' . $e->getMessage()], 500);
         }
     }
 
@@ -342,5 +371,39 @@ class GoogleCalendarController extends Controller
             User::where('id', $user->id)->update(['google_token' => null]);
         }
         return redirect()->route('connect.google.calendar');
+    }
+
+    // 在控制器中添加輔助方法
+    private function convertBrToNewline($text)
+    {
+        if (empty($text)) return '';
+
+        // 先解碼 Unicode 轉義序列
+        $text = json_decode('"' . $text . '"');
+
+        // 處理所有可能的換行標記
+        $text = str_replace(
+            ['<br />', '<br/>', '<br>', '\n', '\r\n'],
+            "\n",
+            $text
+        );
+
+        // 解碼 HTML 實體
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return trim($text);
+    }
+
+    private function convertNewlineToBr($text)
+    {
+        if (empty($text)) return '';
+
+        // 統一換行符
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+
+        // 轉換為 <br/>
+        $text = str_replace("\n", '<br/>', $text);
+
+        return trim($text);
     }
 }
