@@ -171,18 +171,6 @@
                             event.url = 'javascript:;';
                             return event;
                         }
-                    },
-                    {
-                        googleCalendarId: 'jenfuhe@besttour.com.tw',
-                        className: 'gcal-event-tertiary',
-                        color: '#fbbc05',
-                        id: 'gc:jenfuhe@besttour.com.tw',
-                        eventDataTransform: function(event) {
-                            event.extendedProps = event.extendedProps || {};
-                            event.extendedProps.calendarId = 'jenfuhe@besttour.com.tw';
-                            event.url = 'javascript:;';
-                            return event;
-                        }
                     }
                 ],
                 // 需要設置 Google Calendar API Key
@@ -368,8 +356,8 @@
 
                 console.log('Saving event:', eventData);
 
-                const url = currentEvent ? 
-                    '{{ route('events.update', ':id') }}'.replace(':id', currentEvent.id) : 
+                const url = currentEvent ?
+                    '{{ route('events.update', ':id') }}'.replace(':id', currentEvent.id) :
                     '{{ route('events.store') }}';
                 const method = currentEvent ? 'PUT' : 'POST';
 
@@ -384,7 +372,7 @@
                     data: JSON.stringify(eventData),
                     success: function(response) {
                         console.log('Save success:', response);
-                        
+
                         if (currentEvent) {
                             currentEvent.setProp('title', eventData.title);
                             currentEvent.setExtendedProp('description', eventData.description);
@@ -393,7 +381,7 @@
                         } else {
                             calendar.refetchEvents();
                         }
-                        
+
                         eventModal.hide();
                     },
                     error: function(xhr, status, error) {
@@ -406,7 +394,7 @@
             // 綁定刪除按鈕事件
             $('#deleteEvent').on('click', function(event) {
                 event.preventDefault();
-                
+
                 if (!currentEvent || !confirm('確定要刪除這個事件嗎？')) {
                     return;
                 }
