@@ -27,6 +27,13 @@
                 <div class="modal-body">
                     <form id="eventForm">
                         <div class="mb-3">
+                            <label class="form-label">日曆</label>
+                            <select class="form-control" id="eventCalendar" required>
+                                <option value="renfu.her@gmail.com">主要日曆 (renfu.her@gmail.com)</option>
+                                <option value="zivhsiao@gmail.com">次要日曆 (zivhsiao@gmail.com)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
                             <label class="form-label">標題</label>
                             <input type="text" class="form-control" id="eventTitle" required>
                         </div>
@@ -130,6 +137,40 @@
             var currentEvent = null;
             var $monthPicker = $('#monthPicker');
             var $goToDate = $('#goToDate');
+
+            const calendars = [
+                {
+                    id: 'renfu.her@gmail.com',
+                    name: '主要日曆',
+                    className: 'gcal-event-primary',
+                    color: '#1a73e8',
+                    textColor: '#ffffff'
+                },
+                {
+                    id: 'zivhsiao@gmail.com',
+                    name: '次要日曆',
+                    className: 'gcal-event-secondary',
+                    color: '#137333',
+                    textColor: '#ffffff'
+                }
+            ];
+
+            // 動態生成日曆選項
+            function populateCalendarSelect() {
+                const $select = $('#eventCalendar');
+                $select.empty();
+                
+                calendars.forEach(calendar => {
+                    $select.append(`
+                        <option value="${calendar.id}">
+                            ${calendar.name} (${calendar.id})
+                        </option>
+                    `);
+                });
+            }
+
+            // 在文檔加載時填充日曆選項
+            populateCalendarSelect();
 
             // 初始化 Modal
             eventModal = new bootstrap.Modal($('#eventModal')[0]);
@@ -319,8 +360,8 @@
                         currentEvent.source.id.replace('gc:', '') :
                         currentEvent.extendedProps.calendarId;
 
-                    // 保存 calendarId 到當前事件對象
-                    currentEvent.setExtendedProp('calendarId', calendarId);
+                    // 設置選中的日曆
+                    $('#eventCalendar').val(calendarId);
 
                     $('#eventTitle').val(currentEvent.title);
                     let description = currentEvent.extendedProps.description || '';
@@ -346,7 +387,7 @@
                     description: $('#eventDescription').val().trim(),
                     start: $('#eventStart').val(),
                     end: $('#eventEnd').val(),
-                    calendarId: 'primary'
+                    calendarId: $('#eventCalendar').val()  // 使用選擇的日曆 ID
                 };
 
                 if (!eventData.title || !eventData.start || !eventData.end) {
@@ -378,6 +419,7 @@
                             currentEvent.setExtendedProp('description', eventData.description);
                             currentEvent.setStart(eventData.start);
                             currentEvent.setEnd(eventData.end);
+                            currentEvent.setExtendedProp('calendarId', eventData.calendarId);
                         } else {
                             calendar.refetchEvents();
                         }
