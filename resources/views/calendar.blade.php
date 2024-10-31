@@ -318,7 +318,7 @@
                     info.jsEvent.preventDefault();
                     currentEvent = info.event;
 
-                    // 調��日誌
+                    // 調日誌
                     console.log('Current Event Data:', {
                         id: currentEvent.id,
                         title: currentEvent.title,
@@ -391,18 +391,10 @@
                             currentEvent.setStart(eventData.start);
                             currentEvent.setEnd(eventData.end);
                         } else {
-                            calendar.addEvent({
-                                id: response.id,
-                                title: response.title,
-                                description: response.description,
-                                start: response.start,
-                                end: response.end,
-                                className: 'gcal-event-primary'
-                            });
+                            calendar.refetchEvents();
                         }
                         
                         eventModal.hide();
-                        calendar.refetchEvents();
                     },
                     error: function(xhr, status, error) {
                         console.error('Save failed:', error);
