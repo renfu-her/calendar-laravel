@@ -125,12 +125,6 @@
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
     <script>
         $(document).ready(function() {
-            // 防止重複初始化
-            if (window.calendarInitialized) {
-                return;
-            }
-            window.calendarInitialized = true;
-
             var calendar;
             var eventModal;
             var currentEvent = null;
@@ -140,12 +134,7 @@
             // 初始化 Modal
             eventModal = new bootstrap.Modal($('#eventModal')[0]);
 
-            // 移除已存在的事件監聽器
-            $('#saveEvent').off('click');
-            $('#deleteEvent').off('click');
-            $goToDate.off('click');
-
-            // 初始化 FullCalendar
+            // 初始化日曆
             calendar = new FullCalendar.Calendar($('#calendar')[0], {
                 initialView: 'dayGridMonth',
                 headerToolbar: {
@@ -166,6 +155,7 @@
                                 event.extendedProps = event.extendedProps || {};
                                 event.extendedProps.calendarId = 'renfu.her@gmail.com';
                                 event.extendedProps.processed = true;
+                                event.url = 'javascript:;';
                             }
                             return event;
                         }
@@ -178,6 +168,7 @@
                         eventDataTransform: function(event) {
                             event.extendedProps = event.extendedProps || {};
                             event.extendedProps.calendarId = 'zivhsiao@gmail.com';
+                            event.url = 'javascript:;';
                             return event;
                         }
                     },
@@ -189,6 +180,7 @@
                         eventDataTransform: function(event) {
                             event.extendedProps = event.extendedProps || {};
                             event.extendedProps.calendarId = 'jenfuhe@besttour.com.tw';
+                            event.url = 'javascript:;';
                             return event;
                         }
                     }
@@ -206,7 +198,7 @@
                     const endDate = event.end ? new Date(event.end) : startDate;
 
                     // 獲取 calendarId
-                    const calendarId = event.source ? 
+                    const calendarId = event.source ?
                         event.source.id.replace('gc:', '') : // 從事件源獲取
                         event.extendedProps.calendarId; // 從擴展屬性獲取
 
@@ -224,7 +216,8 @@
                     }
 
                     $.ajax({
-                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId', event.id),
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            event.id),
                         method: 'PUT',
                         headers: {
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
@@ -251,12 +244,12 @@
                     const event = info.event;
                     const startDate = new Date(event.start);
                     const endDate = new Date(event.end);
-                    
+
                     // 獲取 calendarId
-                    const calendarId = event.source ? 
-                        event.source.id.replace('gc:', '') : 
+                    const calendarId = event.source ?
+                        event.source.id.replace('gc:', '') :
                         event.extendedProps.calendarId;
-                    
+
                     console.log('Event Resize Data:', {
                         eventId: event.id,
                         calendarId: calendarId,
@@ -271,7 +264,8 @@
                     }
 
                     $.ajax({
-                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId', event.id),
+                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
+                            event.id),
                         method: 'PUT',
                         headers: {
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
@@ -306,92 +300,148 @@
                         info.el.style.backgroundColor = '#ea8600';
                         info.el.style.borderColor = '#ea8600';
                     }
-                }
-            });
+                },
 
-            // 確保只渲染一次
-            if (!calendar.isRendered) {
-                calendar.render();
-            }
+                dateClick: function(info) {
+                    currentEvent = null;
+                    $('#eventTitle').val('');
+                    $('#eventDescription').val('');
+                    $('#eventStart').val(formatDateTime(info.date));
+                    $('#eventEnd').val(formatDateTime(new Date(info.date.getTime() + 4 * 60 * 60 *
+                        1000)));
+                    $('#deleteEvent').hide();
+                    $('.modal-title').text('新增事件');
+                    eventModal.show();
+                },
 
-            // 移除舊的事件監聽器
-            calendar.removeAllEventListeners();
+                eventClick: function(info) {
+                    info.jsEvent.preventDefault();
+                    currentEvent = info.event;
 
-            // 重新綁定事件監聽器
-            $('#saveEvent').on('click', function() {
-                const title = $('#eventTitle').val();
-                let description = $('#eventDescription').val();
-                description = convertNewlineToBr(description);
-                const start = $('#eventStart').val();
-                const end = $('#eventEnd').val();
+                    // 調��日誌
+                    console.log('Current Event Data:', {
+                        id: currentEvent.id,
+                        title: currentEvent.title,
+                        extendedProps: currentEvent.extendedProps,
+                        source: currentEvent.source ? currentEvent.source.id : null
+                    });
 
-                if (currentEvent) {
                     // 獲取 calendarId
-                    const calendarId = currentEvent.extendedProps.calendarId;
+                    const calendarId = currentEvent.source ?
+                        currentEvent.source.id.replace('gc:', '') :
+                        currentEvent.extendedProps.calendarId;
 
-                    // 調試日誌
-                    console.log('Updating event with data:', {
-                        eventId: currentEvent.id,
-                        calendarId: calendarId,
-                        title: title,
-                        description: description,
-                        start: start,
-                        end: end
-                    });
+                    // 保存 calendarId 到當前事件對象
+                    currentEvent.setExtendedProp('calendarId', calendarId);
 
-                    if (!calendarId) {
-                        alert('錯誤：找不到日曆ID');
-                        return;
+                    $('#eventTitle').val(currentEvent.title);
+                    let description = currentEvent.extendedProps.description || '';
+                    description = description.replace(/<br\s*\/?>/gi, '\n');
+                    $('#eventDescription').val(description);
+                    $('#eventStart').val(formatDateTime(currentEvent.start));
+                    $('#eventEnd').val(formatDateTime(currentEvent.end || currentEvent.start));
+                    $('#deleteEvent').show();
+                    $('.modal-title').text('編輯事件');
+                    eventModal.show();
+                }
+            });
+
+            // 渲染日曆
+            calendar.render();
+
+            // 綁定儲存按鈕事件
+            $('#saveEvent').on('click', function(event) {
+                event.preventDefault();
+
+                const eventData = {
+                    title: $('#eventTitle').val().trim(),
+                    description: $('#eventDescription').val().trim(),
+                    start: $('#eventStart').val(),
+                    end: $('#eventEnd').val(),
+                    calendarId: 'primary'
+                };
+
+                if (!eventData.title || !eventData.start || !eventData.end) {
+                    alert('請填寫必要欄位');
+                    return;
+                }
+
+                console.log('Saving event:', eventData);
+
+                const url = currentEvent ? 
+                    '{{ route('events.update', ':id') }}'.replace(':id', currentEvent.id) : 
+                    '{{ route('events.store') }}';
+                const method = currentEvent ? 'PUT' : 'POST';
+
+                $.ajax({
+                    url: url,
+                    method: method,
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    data: JSON.stringify(eventData),
+                    success: function(response) {
+                        console.log('Save success:', response);
+                        
+                        if (currentEvent) {
+                            currentEvent.setProp('title', eventData.title);
+                            currentEvent.setExtendedProp('description', eventData.description);
+                            currentEvent.setStart(eventData.start);
+                            currentEvent.setEnd(eventData.end);
+                        } else {
+                            calendar.addEvent({
+                                id: response.id,
+                                title: response.title,
+                                description: response.description,
+                                start: response.start,
+                                end: response.end,
+                                className: 'gcal-event-primary'
+                            });
+                        }
+                        
+                        eventModal.hide();
+                        calendar.refetchEvents();
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Save failed:', error);
+                        alert('儲存失敗：' + (xhr.responseJSON?.message || '未知錯誤'));
                     }
-
-                    $.ajax({
-                        url: '{{ route('events.update', ':eventId') }}'.replace(':eventId',
-                            currentEvent.id),
-                        method: 'PUT',
-                        headers: {
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        },
-                        data: JSON.stringify({
-                            title: title,
-                            description: description,
-                            start: start,
-                            end: end,
-                            calendarId: calendarId
-                        }),
-                        contentType: 'application/json',
-                        success: function(data) {
-                            console.log('Update success:', data);
-                            currentEvent.setProp('title', data.title);
-                            currentEvent.setExtendedProp('description', data.description);
-                            currentEvent.setStart(data.start);
-                            currentEvent.setEnd(data.end);
-                            eventModal.hide();
-                        },
-                        error: function(xhr) {
-                            console.error('Update failed:', xhr.responseJSON);
-                            alert('更新失敗：' + (xhr.responseJSON?.error || '未知錯誤'));
-                        }
-                    });
-                }
+                });
             });
 
-            $('#deleteEvent').on('click', function() {
-                if (currentEvent && confirm('確定要刪除這個事件嗎？')) {
-                    $.ajax({
-                        url: '{{ route('events.delete', ':eventId') }}'.replace(':eventId',
-                            currentEvent.id),
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        },
-                        success: function(data) {
-                            currentEvent.remove();
-                            eventModal.hide();
-                        }
-                    });
+            // 綁定刪除按鈕事件
+            $('#deleteEvent').on('click', function(event) {
+                event.preventDefault();
+                
+                if (!currentEvent || !confirm('確定要刪除這個事件嗎？')) {
+                    return;
                 }
+
+                console.log('Deleting event:', currentEvent.id);
+
+                $.ajax({
+                    url: '{{ route('events.delete', ':id') }}'.replace(':id', currentEvent.id),
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json'
+                    },
+                    success: function(response) {
+                        console.log('Delete success:', response);
+                        currentEvent.remove();
+                        eventModal.hide();
+                        calendar.refetchEvents();
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Delete failed:', error);
+                        alert('刪除失敗：' + (xhr.responseJSON?.message || '未知錯誤'));
+                    }
+                });
             });
 
+            // 綁定前往日期按鈕事件
             $goToDate.on('click', function() {
                 if ($monthPicker.val()) {
                     var date = new Date($monthPicker.val() + '-01');
@@ -399,55 +449,17 @@
                 }
             });
 
-            // 其他事件監聽器綁定
-            calendar.on('eventClick', function(info) {
-                info.jsEvent.preventDefault();
-                currentEvent = info.event;
-
-                // 調試日誌
-                console.log('Current Event Data:', {
-                    id: currentEvent.id,
-                    title: currentEvent.title,
-                    extendedProps: currentEvent.extendedProps,
-                    source: currentEvent.source ? currentEvent.source.id : null
-                });
-
-                // 獲取 calendarId
-                const calendarId = currentEvent.source ?
-                    currentEvent.source.id.replace('gc:', '') : // 如果是從 Google Calendar 來的事件
-                    currentEvent.extendedProps.calendarId; // 如果是從我們的數據來的事件
-
-                // 保存 calendarId 到當前事件對象
-                currentEvent.setExtendedProp('calendarId', calendarId);
-
-                $('#eventTitle').val(currentEvent.title);
-                let description = currentEvent.extendedProps.description || '';
-                description = description.replace(/<br\s*\/?>/gi, '\n');
-                $('#eventDescription').val(description);
-                $('#eventStart').val(formatDateTime(currentEvent.start));
-                $('#eventEnd').val(formatDateTime(currentEvent.end || currentEvent.start));
-                $('#deleteEvent').show();
-                $('.modal-title').text('編輯事件');
-                eventModal.show();
-            });
-
-            calendar.on('eventDrop', function(info) {
-                updateEvent(info.event);
-            });
-
-            calendar.on('eventResize', function(info) {
-                updateEvent(info.event);
-            });
-
-            calendar.on('dateClick', function(info) {
+            // Modal 關閉事件
+            $('#eventModal').on('hidden.bs.modal', function() {
+                $('#eventForm').trigger('reset');
                 currentEvent = null;
-                $('#eventTitle').val('');
-                $('#eventDescription').val('');
-                $('#eventStart').val(formatDateTime(info.date));
-                $('#eventEnd').val(formatDateTime(new Date(info.date.getTime() + 4 * 60 * 60 * 1000)));
                 $('#deleteEvent').hide();
-                $('.modal-title').text('新增事件');
-                eventModal.show();
+            });
+
+            // 表單提交事件
+            $('#eventForm').on('submit', function(e) {
+                e.preventDefault();
+                $('#saveEvent').click();
             });
 
             calendar.on('eventMouseEnter', function(info) {
