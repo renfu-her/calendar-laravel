@@ -36,6 +36,7 @@ Route::middleware('auth.middleware')->group(function () {
     Route::post('/events', [GoogleCalendarController::class, 'createEvent'])->name('events.create');
     Route::put('/events/{eventId}', [GoogleCalendarController::class, 'updateEvent'])->name('events.update');
     Route::delete('/events/{eventId}', [GoogleCalendarController::class, 'deleteEvent'])->name('events.delete');
+    Route::post('/events', [GoogleCalendarController::class, 'store'])->name('events.store');
 
     Route::get('/reauthorize-google', [GoogleLoginController::class, 'reauthorize'])
         ->name('google.reauthorize')

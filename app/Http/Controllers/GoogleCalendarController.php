@@ -406,4 +406,54 @@ class GoogleCalendarController extends Controller
 
         return trim($text);
     }
+
+    public function store(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $this->setupClient($user);
+            $service = new GoogleCalendar($this->client);
+
+            $calendarId = $request->input('calendarId', 'primary');
+
+            $event = new Event([
+                'summary' => $request->input('title'),
+                'description' => $request->input('description'),
+                'start' => [
+                    'dateTime' => Carbon::parse($request->start)->format('c'),
+                    'timeZone' => 'Asia/Taipei',
+                ],
+                'end' => [
+                    'dateTime' => Carbon::parse($request->end)->format('c'),
+                    'timeZone' => 'Asia/Taipei',
+                ],
+            ]);
+
+            Log::debug('Creating event', [
+                'calendarId' => $calendarId,
+                'event' => $event
+            ]);
+
+            $createdEvent = $service->events->insert($calendarId, $event);
+
+            return response()->json([
+                'id' => $createdEvent->id,
+                'title' => $createdEvent->summary,
+                'description' => $this->convertBrToNewline($createdEvent->description),
+                'start' => Carbon::parse($createdEvent->start->dateTime)->setTimezone('Asia/Taipei')->format('c'),
+                'end' => Carbon::parse($createdEvent->end->dateTime)->setTimezone('Asia/Taipei')->format('c'),
+                'calendarId' => $calendarId,
+                'source' => [
+                    'id' => 'gc:' . $calendarId
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Event creation failed', [
+                'error' => $e->getMessage(),
+                'request' => $request->all()
+            ]);
+
+            return response()->json(['error' => '創建事件失敗：' . $e->getMessage()], 500);
+        }
+    }
 }
